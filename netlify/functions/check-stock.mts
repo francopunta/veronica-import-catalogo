@@ -1,18 +1,13 @@
 // netlify/functions/check-stock.mts
 //
 // SCHEDULED FUNCTION - runs automatically on the schedule set below.
-// Both suppliers expose plain JSON endpoints, so this is just fetch() calls,
-// no browser needed.
 //
-// What it does:
-//  1. Downloads the current catalog (products.json) from Netlify Blobs.
-//  2. Fetches live stock/price data from Casa Franchi (WooCommerce Store API)
-//     and Electro Quil (their internal datatable endpoint).
-//  3. Matches each supplier product to our catalog by normalized name.
-//  4. Updates sinStock (and contado/precio3/precio6 when the cost changed)
-//     for every match, leaving everything else untouched.
-//  5. Saves the updated catalog back to Blobs, where get-products.mts serves
-//     it to the live site.
+// v2: also marks a product as sinStock=true when it is not found at all in
+// either supplier's current live catalog (covers discontinued items that
+// simply vanished from the supplier's site instead of showing quantity 0).
+// Matching uses exact normalized name first, then a fuzzy token-overlap
+// match to survive small wording differences between our stored names and
+// the supplier's current listing text.
 
 import { getStore } from "@netlify/blobs";
 
@@ -28,6 +23,28 @@ function normalize(s) {
     .trim();
 }
 
+function findMatch(key, map) {
+  if (map.has(key)) return map.get(key);
+  const keyTokens = new Set(key.split(" "));
+  if (keyTokens.size < 3) return null;
+  let best = null;
+  let bestOverlap = 0;
+  for (const [name, val] of map) {
+    const nameTokens = new Set(name.split(" "));
+    const shorter = keyTokens.size <= nameTokens.size ? keyTokens : nameTokens;
+    const longer = keyTokens.size <= nameTokens.size ? nameTokens : keyTokens;
+    if (shorter.size === 0) continue;
+    let inter = 0;
+    for (const t of shorter) if (longer.has(t)) inter++;
+    const overlap = inter / shorter.size;
+    if (overlap >= 0.85 && overlap > bestOverlap) {
+      best = val;
+      bestOverlap = overlap;
+    }
+  }
+  return best;
+}
+
 async function fetchFranchiStock() {
   const result = new Map();
   let page = 1;
@@ -41,7 +58,6 @@ async function fetchFranchiStock() {
       result.set(key, {
         inStock: !!it.is_in_stock,
         price: Number(it.prices?.price || 0),
-        img: it.images?.[0]?.src,
       });
     }
     if (items.length < 100) break;
@@ -63,13 +79,9 @@ async function fetchElectroQuilStock() {
   if (!Array.isArray(items)) return result;
   for (const it of items) {
     const key = normalize(it.name);
-    const img = it.thumbImage?.[0]
-      ? `https://applestorequil.rosariosystem.com/backoffice/vistas/${it.thumbImage[0].replace(/^\.\.\//, "")}`
-      : undefined;
     result.set(key, {
       inStock: Number(it.quantity) > 0,
       price: Number(it.price || 0),
-      img,
     });
   }
   return result;
@@ -79,7 +91,7 @@ export default async () => {
   const store = getStore("catalogo");
   const raw = await store.get("products.json");
   if (!raw) {
-    return new Response("No hay catalogo guardado todavia en Blobs. Subi products.json primero.", { status: 400 });
+    return new Response("No hay catalogo guardado todavia en Blobs.", { status: 400 });
   }
   const catalog = JSON.parse(raw);
 
@@ -89,12 +101,19 @@ export default async () => {
   ]);
 
   let updated = 0;
+  let notFound = 0;
   for (const p of catalog) {
     const key = normalize(p.nombre);
-    const hit = franchiMap.get(key) || electroQuilMap.get(key);
-    if (!hit) continue;
-
+    const hit = findMatch(key, franchiMap) || findMatch(key, electroQuilMap);
     const wasSinStock = !!p.sinStock;
+
+    if (!hit) {
+      p.sinStock = true;
+      notFound++;
+      if (wasSinStock !== p.sinStock) updated++;
+      continue;
+    }
+
     p.sinStock = !hit.inStock;
 
     if (hit.price > 0 && p.costoProveedor && Math.abs(hit.price - p.costoProveedor) > 1) {
@@ -109,9 +128,9 @@ export default async () => {
   }
 
   await store.set("products.json", JSON.stringify(catalog));
-  await store.set("last-check.json", JSON.stringify({ checkedAt: new Date().toISOString(), changed: updated }));
+  await store.set("last-check.json", JSON.stringify({ checkedAt: new Date().toISOString(), changed: updated, notFound }));
 
-  return new Response(`OK. Productos con cambio de stock: ${updated}. Total revisado: ${catalog.length}.`, { status: 200 });
+  return new Response(`OK. Cambios: ${updated}. No encontrados: ${notFound}. Total: ${catalog.length}.`, { status: 200 });
 };
 
 export const config = {
