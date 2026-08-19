@@ -2,12 +2,16 @@
 //
 // SCHEDULED FUNCTION - runs automatically on the schedule set below.
 //
-// v2: also marks a product as sinStock=true when it is not found at all in
-// either supplier's current live catalog (covers discontinued items that
-// simply vanished from the supplier's site instead of showing quantity 0).
-// Matching uses exact normalized name first, then a fuzzy token-overlap
-// match to survive small wording differences between our stored names and
-// the supplier's current listing text.
+// v3: matching requires ALL numeric tokens (sizes, dimensions, liters,
+// watts, inches) to match EXACTLY between our product name and the
+// supplier listing. Only the non-numeric words are allowed to fuzzy-match.
+// This stops e.g. "Colchon Vega 080 X 190 X 023" from being wrongly matched
+// against "Colchon Vega 100 X 190 X 023" just because most words are the
+// same - the size number is what actually distinguishes these products.
+//
+// If a product has no match at all in either supplier's current live
+// catalog, it is marked sinStock = true (covers discontinued items that
+// vanished from the supplier's site instead of showing quantity 0).
 
 import { getStore } from "@netlify/blobs";
 
@@ -23,16 +27,39 @@ function normalize(s) {
     .trim();
 }
 
+function splitTokens(key) {
+  const tokens = key.split(" ").filter(Boolean);
+  const nums = new Set(tokens.filter(t => /^\d+$/.test(t)));
+  const words = new Set(tokens.filter(t => !/^\d+$/.test(t)));
+  return { nums, words };
+}
+
+function sameSet(a, b) {
+  if (a.size !== b.size) return false;
+  for (const v of a) if (!b.has(v)) return false;
+  return true;
+}
+
 function findMatch(key, map) {
   if (map.has(key)) return map.get(key);
-  const keyTokens = new Set(key.split(" "));
-  if (keyTokens.size < 3) return null;
+  const parsed = splitTokens(key);
+  const keyNums = parsed.nums;
+  const keyWords = parsed.words;
+  if (keyWords.size < 3) return null;
+
   let best = null;
   let bestOverlap = 0;
-  for (const [name, val] of map) {
-    const nameTokens = new Set(name.split(" "));
-    const shorter = keyTokens.size <= nameTokens.size ? keyTokens : nameTokens;
-    const longer = keyTokens.size <= nameTokens.size ? nameTokens : keyTokens;
+  for (const entry of map) {
+    const name = entry[0];
+    const val = entry[1];
+    const nParsed = splitTokens(name);
+    const nNums = nParsed.nums;
+    const nWords = nParsed.words;
+
+    if (!sameSet(keyNums, nNums)) continue;
+
+    const shorter = keyWords.size <= nWords.size ? keyWords : nWords;
+    const longer = keyWords.size <= nWords.size ? nWords : keyWords;
     if (shorter.size === 0) continue;
     let inter = 0;
     for (const t of shorter) if (longer.has(t)) inter++;
@@ -49,7 +76,7 @@ async function fetchFranchiStock() {
   const result = new Map();
   let page = 1;
   while (true) {
-    const resp = await fetch(`${FRANCHI_API}?per_page=100&page=${page}`);
+    const resp = await fetch(FRANCHI_API + "?per_page=100&page=" + page);
     if (!resp.ok) break;
     const items = await resp.json();
     if (!Array.isArray(items) || items.length === 0) break;
@@ -57,7 +84,7 @@ async function fetchFranchiStock() {
       const key = normalize(it.name);
       result.set(key, {
         inStock: !!it.is_in_stock,
-        price: Number(it.prices?.price || 0),
+        price: Number((it.prices && it.prices.price) || 0),
       });
     }
     if (items.length < 100) break;
@@ -95,10 +122,12 @@ export default async () => {
   }
   const catalog = JSON.parse(raw);
 
-  const [franchiMap, electroQuilMap] = await Promise.all([
-    fetchFranchiStock().catch(() => new Map()),
-    fetchElectroQuilStock().catch(() => new Map()),
+  const results = await Promise.all([
+    fetchFranchiStock().catch(function () { return new Map(); }),
+    fetchElectroQuilStock().catch(function () { return new Map(); }),
   ]);
+  const franchiMap = results[0];
+  const electroQuilMap = results[1];
 
   let updated = 0;
   let notFound = 0;
@@ -128,9 +157,9 @@ export default async () => {
   }
 
   await store.set("products.json", JSON.stringify(catalog));
-  await store.set("last-check.json", JSON.stringify({ checkedAt: new Date().toISOString(), changed: updated, notFound }));
+  await store.set("last-check.json", JSON.stringify({ checkedAt: new Date().toISOString(), changed: updated, notFound: notFound }));
 
-  return new Response(`OK. Cambios: ${updated}. No encontrados: ${notFound}. Total: ${catalog.length}.`, { status: 200 });
+  return new Response("OK. Cambios: " + updated + ". No encontrados: " + notFound + ". Total: " + catalog.length + ".", { status: 200 });
 };
 
 export const config = {
