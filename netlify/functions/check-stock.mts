@@ -1,17 +1,5 @@
 // netlify/functions/check-stock.mts
-//
-// SCHEDULED FUNCTION - runs automatically on the schedule set below.
-//
-// v3: matching requires ALL numeric tokens (sizes, dimensions, liters,
-// watts, inches) to match EXACTLY between our product name and the
-// supplier listing. Only the non-numeric words are allowed to fuzzy-match.
-// This stops e.g. "Colchon Vega 080 X 190 X 023" from being wrongly matched
-// against "Colchon Vega 100 X 190 X 023" just because most words are the
-// same - the size number is what actually distinguishes these products.
-//
-// If a product has no match at all in either supplier's current live
-// catalog, it is marked sinStock = true (covers discontinued items that
-// vanished from the supplier's site instead of showing quantity 0).
+// v4-debug: temporary console.log to diagnose product id 10.
 
 import { getStore } from "@netlify/blobs";
 
@@ -123,17 +111,34 @@ export default async () => {
   const catalog = JSON.parse(raw);
 
   const results = await Promise.all([
-    fetchFranchiStock().catch(function () { return new Map(); }),
-    fetchElectroQuilStock().catch(function () { return new Map(); }),
+    fetchFranchiStock().catch(function (e) { console.log("FRANCHI FETCH ERROR: " + e); return new Map(); }),
+    fetchElectroQuilStock().catch(function (e) { console.log("ELECTROQUIL FETCH ERROR: " + e); return new Map(); }),
   ]);
   const franchiMap = results[0];
   const electroQuilMap = results[1];
+
+  console.log("DEBUG sizes franchiMap=" + franchiMap.size + " electroQuilMap=" + electroQuilMap.size);
 
   let updated = 0;
   let notFound = 0;
   for (const p of catalog) {
     const key = normalize(p.nombre);
-    const hit = findMatch(key, franchiMap) || findMatch(key, electroQuilMap);
+
+    if (p.id === 10) {
+      const parsedDebug = splitTokens(key);
+      console.log("DEBUG id10 key=[" + key + "]");
+      console.log("DEBUG id10 nums=" + JSON.stringify([...parsedDebug.nums]) + " words=" + JSON.stringify([...parsedDebug.words]));
+      console.log("DEBUG id10 electroQuilHasExact=" + electroQuilMap.has(key));
+    }
+
+    const hitF = findMatch(key, franchiMap);
+    const hitE = findMatch(key, electroQuilMap);
+    const hit = hitF || hitE;
+
+    if (p.id === 10) {
+      console.log("DEBUG id10 hitF=" + JSON.stringify(hitF) + " hitE=" + JSON.stringify(hitE));
+    }
+
     const wasSinStock = !!p.sinStock;
 
     if (!hit) {
