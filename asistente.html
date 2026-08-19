@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Asistente · Veronica Import</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box} body{margin:0;font-family:Poppins,Arial,sans-serif;background:#f5f5f3;color:#0a0a0a}
+    .wrap{max-width:1080px;margin:auto;padding:28px 18px 60px}.top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:24px}
+    .brand{font-size:25px;font-weight:800;letter-spacing:-1px}.brand span{background:#0a0a0a;color:#fff;padding:3px 8px;margin-left:5px}.back{color:#0a0a0a;text-decoration:none;font-size:13px;font-weight:600}
+    .grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(320px,.95fr);gap:18px}.card{background:#fff;border:1px solid #e8e8e4;border-radius:22px;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.04)}
+    h1{font-size:28px;line-height:1.08;margin:0 0 8px}.muted{color:#777;font-size:13px;line-height:1.5;margin-bottom:18px}.tabs{display:flex;gap:8px;margin-bottom:12px}.tab{border:1px solid #ddd;background:#fff;border-radius:999px;padding:9px 13px;font-weight:700;font-size:12px;cursor:pointer}.tab.active{background:#0a0a0a;color:#fff;border-color:#0a0a0a}
+    textarea{width:100%;min-height:138px;resize:vertical;border:1px solid #ddd;border-radius:16px;padding:15px;font:500 14px Poppins;outline:none}textarea:focus{border-color:#111}.examples{display:flex;flex-wrap:wrap;gap:7px;margin:11px 0 15px}.chip{font-size:11px;border:0;background:#f1f1ef;border-radius:999px;padding:8px 10px;cursor:pointer}.go{width:100%;border:0;border-radius:14px;padding:14px;background:#0a0a0a;color:#fff;font-weight:800;font:700 14px Poppins;cursor:pointer}.go:disabled{opacity:.55;cursor:wait}
+    .answer{margin-top:15px;border-radius:16px;background:#f7f7f5;padding:15px;min-height:74px;font-size:14px;line-height:1.55;white-space:pre-wrap}.products{display:grid;gap:8px;margin-top:12px}.product{padding:10px 12px;border:1px solid #ecece8;border-radius:12px;font-size:12px}.product strong{display:block;font-size:12px;margin-bottom:3px}.price{color:#12833b;font-weight:800}
+    .flyer-shell{display:flex;justify-content:center;align-items:flex-start}.flyer{width:337.5px;height:600px;background:#fff;border-radius:18px;overflow:hidden;position:relative;padding:38px 28px;box-shadow:0 12px 40px rgba(0,0,0,.08);display:flex;flex-direction:column}.f-logo{font-weight:800;font-size:18px;letter-spacing:-.8px}.f-logo span{background:#111;color:#fff;padding:2px 6px;margin-left:4px}.f-main{margin:auto 0}.f-title{font-size:40px;line-height:.98;font-weight:800;letter-spacing:-2px;text-transform:uppercase;max-width:280px}.f-sub{font-size:15px;line-height:1.4;margin-top:18px;max-width:270px}.f-highlight{font-size:20px;line-height:1.15;font-weight:800;color:#168743;margin-top:22px}.f-extra{font-size:12px;font-weight:600;margin-top:8px}.f-cta{font-size:13px;font-weight:800;margin-top:auto;border-top:1px solid #eee;padding-top:16px}.download{margin-top:14px;width:100%;border:1px solid #111;background:#fff;border-radius:13px;padding:11px;font-weight:700;cursor:pointer}.hidden{display:none}
+    .status{font-size:11px;color:#777;margin-top:9px;text-align:center}.err{color:#a21b1b}
+    @media(max-width:760px){.grid{grid-template-columns:1fr}.wrap{padding-top:18px}.top{margin-bottom:16px}.card{padding:16px}.flyer{width:min(337.5px,100%);height:auto;aspect-ratio:9/16}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div class="brand">veronica <span>import</span></div><a class="back" href="/">← catálogo</a></div>
+  <div class="grid">
+    <section class="card">
+      <h1>Asistente Veronica Import</h1>
+      <div class="muted">Preguntale por productos y stock, o pedile una idea lista para flyer.</div>
+      <div class="tabs">
+        <button class="tab active" data-mode="catalogo">Consultar catálogo</button>
+        <button class="tab" data-mode="flyer">Crear flyer</button>
+      </div>
+      <textarea id="q" placeholder="Ej: ¿Tenemos heladeras blancas en stock?"></textarea>
+      <div class="examples" id="examples"></div>
+      <button class="go" id="go">Preguntar</button>
+      <div class="status" id="status"></div>
+      <div class="answer" id="answer">Acá va a aparecer la respuesta.</div>
+      <div class="products" id="products"></div>
+    </section>
+
+    <section class="card flyer-shell">
+      <div style="width:100%">
+        <div class="flyer" id="flyer">
+          <div class="f-logo">veronica <span>import</span></div>
+          <div class="f-main">
+            <div class="f-title" id="ft">TU FLYER</div>
+            <div class="f-sub" id="fs">Pedile una idea al asistente y se arma automáticamente acá.</div>
+            <div class="f-highlight" id="fh">Precios que convienen</div>
+            <div class="f-extra" id="fe">Envío gratis · Cuotas</div>
+          </div>
+          <div class="f-cta" id="fc">Conocé todos nuestros productos</div>
+        </div>
+        <button class="download hidden" id="download">Descargar flyer 9:16</button>
+      </div>
+    </section>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+  let mode='catalogo';
+  const q=document.getElementById('q'), go=document.getElementById('go'), answer=document.getElementById('answer'), products=document.getElementById('products'), status=document.getElementById('status'), download=document.getElementById('download');
+  const examples=document.getElementById('examples');
+  const sets={
+    catalogo:['¿Tenemos heladeras blancas en stock?','Buscame una cocina de 60 cm','¿Qué TV tenemos por menos de $500.000?'],
+    flyer:['Hoy es viernes y llueve, haceme un flyer de buenos días','Haceme un flyer para mostrar que tenemos muchas opciones en stock','Haceme un flyer para invitar a mirar las ofertas de hoy']
+  };
+  function drawExamples(){ examples.innerHTML=''; sets[mode].forEach(t=>{const b=document.createElement('button');b.className='chip';b.textContent=t;b.onclick=()=>{q.value=t};examples.appendChild(b)}); }
+  drawExamples();
+  document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); b.classList.add('active'); mode=b.dataset.mode;
+    q.placeholder=mode==='flyer'?'Ej: Hoy es viernes, llueve y quiero dar los buenos días':'Ej: ¿Tenemos heladeras blancas en stock?';
+    go.textContent=mode==='flyer'?'Crear texto para flyer':'Preguntar'; answer.textContent=mode==='flyer'?'La IA va a armar el contenido y lo vas a ver a la derecha.':'Acá va a aparecer la respuesta.'; products.innerHTML=''; drawExamples();
+  });
+
+  go.onclick=async()=>{
+    const pregunta=q.value.trim(); if(!pregunta)return;
+    go.disabled=true; status.className='status'; status.textContent='Consultando catálogo actualizado…';
+    try{
+      const r=await fetch('/.netlify/functions/asistente',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pregunta,modo:mode})});
+      const d=await r.json(); if(!r.ok)throw new Error(d.error||'No se pudo responder');
+      products.innerHTML='';
+      if(mode==='catalogo'){
+        answer.textContent=d.text||'Sin respuesta';
+        (d.productos||[]).slice(0,5).forEach(p=>{const el=document.createElement('div');el.className='product';el.innerHTML='<strong>'+esc(p.nombre)+'</strong>'+(p.contado?'<span class="price">Contado: $'+Number(p.contado).toLocaleString('es-AR')+'</span>':'');products.appendChild(el)});
+      }else{
+        const f=d.flyer||{}; answer.textContent='Listo. Te armé el texto y lo cargué en el flyer.';
+        set('ft',f.titulo);set('fs',f.subtitulo);set('fh',f.destacado);set('fe',f.extra);set('fc',f.cta);download.classList.remove('hidden');
+      }
+      status.textContent=d.resultados+' productos relevantes encontrados';
+    }catch(e){status.className='status err';status.textContent=e.message;answer.textContent='No se pudo completar la consulta.'}
+    go.disabled=false;
+  };
+  function set(id,v){if(v)document.getElementById(id).textContent=v}
+  function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+  download.onclick=async()=>{
+    const node=document.getElementById('flyer');
+    const canvas=await html2canvas(node,{scale:3.2,backgroundColor:'#ffffff',useCORS:true});
+    const a=document.createElement('a');a.download='veronica-import-flyer.png';a.href=canvas.toDataURL('image/png');a.click();
+  };
+</script>
+</body>
+</html>
