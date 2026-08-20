@@ -4,20 +4,65 @@
 //
 // Matching requires ALL numeric tokens (sizes, dimensions, liters, watts,
 // inches) to match EXACTLY between our product name and the supplier
-// listing. Only the non-numeric words are allowed to fuzzy-match. This
-// stops e.g. "Colchon Vega 080 X 190 X 023" from being wrongly matched
-// against "Colchon Vega 100 X 190 X 023" just because most words are the
-// same - the size number is what actually distinguishes these products.
-// Verified working: confirmed via debug logging on 2026-08-19.
+// listing. Only the non-numeric words are allowed to fuzzy-match.
 //
-// If a product has no match at all in either supplier's current live
-// catalog, it is marked sinStock = true (covers discontinued items that
-// vanished from the supplier's site instead of showing quantity 0).
+// v4: also scans Electro Quil's live catalog for products that do NOT exist
+// in our own catalog at all, and adds them automatically - real photo,
+// mapped to the right category, cost with the usual margin applied. These
+// freshly-added products get a fechaAgregado timestamp so the site's "lo
+// mas nuevo" section can show the real newest arrivals.
 
 import { getStore } from "@netlify/blobs";
 
 const FRANCHI_API = "https://franchi.com.ar/wp-json/wc/store/v1/products";
 const ELECTROQUIL_API = "https://applestorequil.rosariosystem.com/catalogo/ajax/datatable-productos.ajax.php";
+const ELECTROQUIL_IMG_BASE = "https://applestorequil.rosariosystem.com/backoffice/vistas/";
+
+const CATEGORY_MAP = {
+  "CAMPANAS Y EXTRACTORES": "Cocina",
+  "COLCHONES Y SOMIERS": "Descanso",
+  "INFORMATICA": "Hogar y Herramientas",
+  "SILLONES COMPRIMIDOS": "Sillones",
+  "CORTADORA DE CESPED JARDINERIA": "Jardin y Exterior",
+  "CUIDADO PERSONAL": "Hogar y Herramientas",
+  "MOVILIDAD ELECTRICA": "Bicicletas y Movilidad",
+  "ALMOHADAS": "Descanso",
+  "TABLET": "Hogar y Herramientas",
+  "SOPORTE PARA TV": "Hogar y Herramientas",
+  "PLANCHAS": "Hogar y Herramientas",
+  "ASPIRADORA": "Hogar y Herramientas",
+  "MUEBLES": "Hogar y Herramientas",
+  "PANELES CALEFACTORES": "Aires y Ventilacion",
+  "CAMPERAS": "Hogar y Herramientas",
+  "LAVAVAJILLAS": "Cocina",
+  "TOSTADORA SANDWICHERA": "Cocina",
+  "JUGUETES": "Hogar y Herramientas",
+  "FREIDORAS": "Cocina",
+  "CAMPING": "Camping y Aire Libre",
+  "PARLANTES": "Parlantes y Audio",
+  "GAMING": "Hogar y Herramientas",
+  "REPOSERAS": "Camping y Aire Libre",
+  "PILETAS": "Camping y Aire Libre",
+  "BICICLETAS": "Bicicletas y Movilidad",
+  "PEQUENOS": "Cocina",
+  "LICUADORAS": "Cocina",
+  "EXHIBIDORAS": "Heladeras y Freezers",
+  "SECARROPAS": "Lavado",
+  "BALANZAS": "Hogar y Herramientas",
+  "HORNOS ELECTRICOS": "Cocina",
+  "JARRA ELECTRICA": "Cocina",
+  "HERRAMIENTAS": "Herramientas y Ferreteria",
+  "CAFETERAS": "Cocina",
+  "VENTILADORES": "Aires y Ventilacion",
+  "FREEZER": "Heladeras y Freezers",
+  "COCINAS": "Cocina",
+  "MICROONDAS": "Cocina",
+  "HELADERAS": "Heladeras y Freezers",
+  "TERMOTANQUES": "Termotanques",
+  "AIRES": "Aires y Ventilacion",
+  "LAVARROPAS": "Lavado",
+  "TELEVISORES": "Televisores",
+};
 
 function normalize(s) {
   return s
@@ -26,6 +71,17 @@ function normalize(s) {
     .replace(/[^A-Z0-9 ]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function titleClean(s) {
+  const words = s.split(" ");
+  return words.map(function (w) {
+    if (/\d/.test(w)) return w;
+    if (w.toUpperCase() === w && w.length > 1) {
+      return w.charAt(0) + w.slice(1).toLowerCase();
+    }
+    return w;
+  }).join(" ");
 }
 
 function splitTokens(key) {
@@ -95,24 +151,22 @@ async function fetchFranchiStock() {
   return result;
 }
 
-async function fetchElectroQuilStock() {
-  const result = new Map();
+async function fetchElectroQuilRaw() {
   const resp = await fetch(ELECTROQUIL_API, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: "draw=1&start=0&length=1000",
   });
-  if (!resp.ok) return result;
+  if (!resp.ok) return [];
   const items = await resp.json();
-  if (!Array.isArray(items)) return result;
-  for (const it of items) {
-    const key = normalize(it.name);
-    result.set(key, {
-      inStock: Number(it.quantity) > 0,
-      price: Number(it.price || 0),
-    });
+  return Array.isArray(items) ? items : [];
+}
+
+function electroQuilImageUrl(it) {
+  if (it.thumbImage && it.thumbImage[0]) {
+    return ELECTROQUIL_IMG_BASE + it.thumbImage[0].replace(/^\.\.\//, "");
   }
-  return result;
+  return null;
 }
 
 export default async () => {
@@ -123,12 +177,17 @@ export default async () => {
   }
   const catalog = JSON.parse(raw);
 
-  const results = await Promise.all([
-    fetchFranchiStock().catch(function () { return new Map(); }),
-    fetchElectroQuilStock().catch(function () { return new Map(); }),
-  ]);
-  const franchiMap = results[0];
-  const electroQuilMap = results[1];
+  const electroQuilRaw = await fetchElectroQuilRaw().catch(function () { return []; });
+  const electroQuilMap = new Map();
+  for (const it of electroQuilRaw) {
+    const key = normalize(it.name);
+    electroQuilMap.set(key, {
+      inStock: Number(it.quantity) > 0,
+      price: Number(it.price || 0),
+    });
+  }
+
+  const franchiMap = await fetchFranchiStock().catch(function () { return new Map(); });
 
   let updated = 0;
   let notFound = 0;
@@ -157,10 +216,56 @@ export default async () => {
     if (wasSinStock !== p.sinStock) updated++;
   }
 
-  await store.set("products.json", JSON.stringify(catalog));
-  await store.set("last-check.json", JSON.stringify({ checkedAt: new Date().toISOString(), changed: updated, notFound: notFound }));
+  const existingKeys = new Set(catalog.map(function (p) { return normalize(p.nombre); }));
+  const existingCatalogMap = new Map(catalog.map(function (p) { return [normalize(p.nombre), p]; }));
+  let nextId = catalog.reduce(function (max, p) { return Math.max(max, p.id); }, 0) + 1;
+  let added = 0;
+  const nowIso = new Date().toISOString();
 
-  return new Response("OK. Cambios: " + updated + ". No encontrados: " + notFound + ". Total: " + catalog.length + ".", { status: 200 });
+  for (const it of electroQuilRaw) {
+    const key = normalize(it.name);
+    if (existingKeys.has(key)) continue;
+    if (findMatch(key, existingCatalogMap)) continue;
+
+    const costo = Number(it.price || 0);
+    if (costo <= 0) continue;
+    const contado = Math.round(costo * 1.20);
+    const rawCat = (it.type || it.category || "").toUpperCase().trim();
+    const categoria = CATEGORY_MAP[rawCat] || "Hogar y Herramientas";
+    const img = electroQuilImageUrl(it);
+
+    catalog.push({
+      id: nextId++,
+      nombre: titleClean(it.name),
+      categoria: categoria,
+      costoProveedor: costo,
+      contado: contado,
+      precio3: Math.round(contado * 1.20),
+      precio6: Math.round(contado * 1.40),
+      img: img || "",
+      nuevo: true,
+      fechaAgregado: nowIso,
+      descripcion: "Producto nuevo de nuestro proveedor Electro Quil. Precio de contado con descuento, con la opcion de pagarlo en 3 o 6 cuotas sin necesidad de banco, solo con recibo de sueldo.",
+      specs: [],
+      sinStock: Number(it.quantity) > 0 ? false : true,
+    });
+    existingKeys.add(key);
+    added++;
+  }
+
+  await store.set("products.json", JSON.stringify(catalog));
+  await store.set("last-check.json", JSON.stringify({
+    checkedAt: nowIso,
+    changed: updated,
+    notFound: notFound,
+    added: added,
+    total: catalog.length,
+  }));
+
+  return new Response(
+    "OK. Cambios: " + updated + ". No encontrados: " + notFound + ". Nuevos agregados: " + added + ". Total: " + catalog.length + ".",
+    { status: 200 }
+  );
 };
 
 export const config = {
