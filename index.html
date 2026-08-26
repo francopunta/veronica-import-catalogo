@@ -3346,15 +3346,18 @@ if(!reduceMotion){
     if(!resp.ok) return;
     const fresh = await resp.json();
     if(!Array.isArray(fresh)) return;
-    const byId = new Map(PRODUCTOS.map(p=>[p.id, p]));
+    const freshById = new Map(PRODUCTOS.map(p=>[p.id, p]));
     let changed = false;
     let structureChanged = false;
     fresh.forEach(f=>{
-      const p = byId.get(f.id);
+      const p = freshById.get(f.id);
       if(!p){
         // Brand new product the automation added after this page was built —
         // bring it in properly (not just patch a field on something missing).
+        // Also register it in the real byId lookup that openModal() uses,
+        // otherwise clicking a freshly-added product silently does nothing.
         PRODUCTOS.push(f);
+        byId[f.id] = f;
         structureChanged = true;
         changed = true;
         return;
