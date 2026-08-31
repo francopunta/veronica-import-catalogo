@@ -164,7 +164,11 @@ async function fetchElectroQuilRaw() {
 
 function electroQuilImageUrl(it) {
   if (it.thumbImage && it.thumbImage[0]) {
-    return ELECTROQUIL_IMG_BASE + it.thumbImage[0].replace(/^\.\.\//, "");
+    const raw = it.thumbImage[0];
+    const match = raw.match(/img\/productos\/.*$/);
+    if (match) {
+      return ELECTROQUIL_IMG_BASE + match[0];
+    }
   }
   return null;
 }
