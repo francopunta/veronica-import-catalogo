@@ -3357,7 +3357,7 @@ if(!reduceMotion){
         // Also register it in the real byId lookup that openModal() uses,
         // otherwise clicking a freshly-added product silently does nothing.
         PRODUCTOS.push(f);
-        byId[f.id] = f;
+        try{ byId[f.id] = f; }catch(e){ /* modal lookup registration failed, but the product is already in the catalog - never let this block the others */ }
         structureChanged = true;
         changed = true;
         return;
