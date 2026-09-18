@@ -3136,7 +3136,7 @@ const byId = {};
 PRODUCTOS.forEach(p=>byId[p.id]=p);
 
 function openModal(id){
-  const p = byId[id];
+  const p = byId[id] || PRODUCTOS.find(x=>x.id===id);
   if(!p) return;
   const specsHtml = (p.specs||[]).map(s=>`<span>${s}</span>`).join('');
   modalContent.innerHTML = `
@@ -3200,7 +3200,7 @@ function saveCart(){
 }
 
 function addToCart(id, btnEl){
-  const p = byId[id];
+  const p = byId[id] || PRODUCTOS.find(x=>x.id===id);
   if(!p) return;
   const existing = CART.find(c=>c.id===id);
   if(existing){
